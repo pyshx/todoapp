@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package todo.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/pyshx/todoapp/gen/todo/v1;todov1";
+
+// Visibility determines who can see a task
+enum Visibility {
+  VISIBILITY_UNSPECIFIED = 0;
+  VISIBILITY_ONLY_ME = 1;
+  VISIBILITY_COMPANY_WIDE = 2;
+}
+
+// TaskStatus represents the current state of a task
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  TASK_STATUS_TODO = 1;
+  TASK_STATUS_IN_PROGRESS = 2;
+  TASK_STATUS_DONE = 3;
+}
+
+// Task represents a todo item
+message Task {
+  string id = 1;
+  string company_id = 2;
+  string creator_id = 3;
+  optional string assignee_id = 4;
+  string title = 5;
+  optional string description = 6;
+  optional google.protobuf.Timestamp due_date = 7;
+  Visibility visibility = 8;
+  TaskStatus status = 9;
+  int32 version = 10;
+  google.protobuf.Timestamp created_at = 11;
+  google.protobuf.Timestamp updated_at = 12;
+}
+
+// CreateTaskRequest creates a new task
+message CreateTaskRequest {
+  string title = 1;
+  optional string description = 2;
+  optional string assignee_id = 3;
+  optional google.protobuf.Timestamp due_date = 4;
+  Visibility visibility = 5;
+}
+
+// CreateTaskResponse returns the created task
+message CreateTaskResponse {
+  Task task = 1;
+}
+
+// ListCompanyTasksRequest lists all tasks visible to the user in their company
+message ListCompanyTasksRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+// ListCompanyTasksResponse returns paginated tasks
+message ListCompanyTasksResponse {
+  repeated Task tasks = 1;
+  string next_page_token = 2;
+}
+
+// ListMyTasksRequest lists tasks assigned to the authenticated user
+message ListMyTasksRequest {
+  int32 page_size = 1;
+  string page_token = 2;
+}
+
+// ListMyTasksResponse returns paginated tasks
+message ListMyTasksResponse {
+  repeated Task tasks = 1;
+  string next_page_token = 2;
+}
+
+// GetTaskRequest retrieves a single task by ID
+message GetTaskRequest {
+  string id = 1;
+}
+
+// GetTaskResponse returns the task
+message GetTaskResponse {
+  Task task = 1;
+}
+
+// UpdateTaskRequest updates an existing task (partial update)
+message UpdateTaskRequest {
+  string id = 1;
+  int32 version = 2; // Required for optimistic locking
+  optional string title = 3;
+  optional string description = 4;
+  optional string assignee_id = 5;
+  optional google.protobuf.Timestamp due_date = 6;
+  optional Visibility visibility = 7;
+  optional TaskStatus status = 8;
+}
+
+// UpdateTaskResponse returns the updated task
+message UpdateTaskResponse {
+  Task task = 1;
+}
+
+// DeleteTaskRequest deletes a task by ID
+message DeleteTaskRequest {
+  string id = 1;
+}
+
+// DeleteTaskResponse is empty on success
+message DeleteTaskResponse {}
+
+// TodoService provides task management operations
+service TodoService {
+  // CreateTask creates a new task (Editor only)
+  rpc CreateTask(CreateTaskRequest) returns (CreateTaskResponse);
+
+  // ListCompanyTasks lists all tasks visible to the user in their company
+  rpc ListCompanyTasks(ListCompanyTasksRequest) returns (ListCompanyTasksResponse);
+
+  // ListMyTasks lists tasks assigned to the authenticated user
+  rpc ListMyTasks(ListMyTasksRequest) returns (ListMyTasksResponse);
+
+  // GetTask retrieves a single task by ID
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+
+  // UpdateTask updates an existing task (Editor only)
+  rpc UpdateTask(UpdateTaskRequest) returns (UpdateTaskResponse);
+
+  // DeleteTask deletes a task (Editor only)
+  rpc DeleteTask(DeleteTaskRequest) returns (DeleteTaskResponse);
+}
