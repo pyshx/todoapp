@@ -13,6 +13,8 @@ type Config struct {
 	LogLevel        string
 	ShutdownTimeout time.Duration
 	Version         string
+	JWTSecret       string
+	JWTDuration     time.Duration
 }
 
 func Load() (*Config, error) {
@@ -20,6 +22,8 @@ func Load() (*Config, error) {
 		LogLevel:        getEnv("LOG_LEVEL", "info"),
 		ShutdownTimeout: getDurationEnv("SHUTDOWN_TIMEOUT", 30*time.Second),
 		Version:         getEnv("VERSION", "dev"),
+		JWTSecret:       getEnv("JWT_SECRET", "default-secret-change-in-production"),
+		JWTDuration:     getDurationEnv("JWT_DURATION", 24*time.Hour),
 	}
 
 	cfg.DatabaseURL = os.Getenv("DATABASE_URL")
