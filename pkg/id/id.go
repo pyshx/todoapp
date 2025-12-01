@@ -1,6 +1,8 @@
 package id
 
 import (
+	"encoding/json"
+
 	"github.com/google/uuid"
 )
 
@@ -8,8 +10,8 @@ type ID[T any] struct {
 	value uuid.UUID
 }
 
-func New[T any]() ID[T]                   { return ID[T]{value: uuid.New()} }
-func From[T any](u uuid.UUID) ID[T]       { return ID[T]{value: u} }
+func New[T any]() ID[T]             { return ID[T]{value: uuid.New()} }
+func From[T any](u uuid.UUID) ID[T] { return ID[T]{value: u} }
 
 func Parse[T any](s string) (ID[T], error) {
 	u, err := uuid.Parse(s)
@@ -27,10 +29,27 @@ func MustParse[T any](s string) ID[T] {
 	return id
 }
 
-func (id ID[T]) String() string      { return id.value.String() }
-func (id ID[T]) UUID() uuid.UUID     { return id.value }
-func (id ID[T]) IsZero() bool        { return id.value == uuid.Nil }
+func (id ID[T]) String() string        { return id.value.String() }
+func (id ID[T]) UUID() uuid.UUID       { return id.value }
+func (id ID[T]) IsZero() bool          { return id.value == uuid.Nil }
 func (id ID[T]) Equal(other ID[T]) bool { return id.value == other.value }
+
+func (id ID[T]) MarshalJSON() ([]byte, error) {
+	return json.Marshal(id.value.String())
+}
+
+func (id *ID[T]) UnmarshalJSON(data []byte) error {
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	u, err := uuid.Parse(s)
+	if err != nil {
+		return err
+	}
+	id.value = u
+	return nil
+}
 
 type (
 	companyIDType struct{}
