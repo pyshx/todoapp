@@ -100,8 +100,25 @@ func KindFromError(err error) ErrorKind {
 	}
 }
 
-func IsNotFound(err error) bool             { _, ok := err.(*ErrNotFound); return ok }
-func IsPermissionDenied(err error) bool     { _, ok := err.(*ErrPermissionDenied); return ok }
-func IsVersionMismatch(err error) bool      { _, ok := err.(*ErrVersionMismatch); return ok }
-func IsInvalidInput(err error) bool         { _, ok := err.(*ErrInvalidInput); return ok }
-func IsUnauthenticated(err error) bool      { _, ok := err.(*ErrUnauthenticated); return ok }
+type ErrAlreadyExists struct {
+	Resource string
+	Reason   string
+}
+
+func (e *ErrAlreadyExists) Error() string {
+	if e.Reason != "" {
+		return fmt.Sprintf("%s already exists: %s", e.Resource, e.Reason)
+	}
+	return fmt.Sprintf("%s already exists", e.Resource)
+}
+
+func NewErrAlreadyExists(resource, reason string) *ErrAlreadyExists {
+	return &ErrAlreadyExists{Resource: resource, Reason: reason}
+}
+
+func IsNotFound(err error) bool         { _, ok := err.(*ErrNotFound); return ok }
+func IsPermissionDenied(err error) bool { _, ok := err.(*ErrPermissionDenied); return ok }
+func IsVersionMismatch(err error) bool  { _, ok := err.(*ErrVersionMismatch); return ok }
+func IsInvalidInput(err error) bool     { _, ok := err.(*ErrInvalidInput); return ok }
+func IsUnauthenticated(err error) bool  { _, ok := err.(*ErrUnauthenticated); return ok }
+func IsAlreadyExists(err error) bool    { _, ok := err.(*ErrAlreadyExists); return ok }
