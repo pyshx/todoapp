@@ -1014,8 +1014,8 @@ const file_todo_v1_service_proto_rawDesc = "" +
 	"\n" +
 	"UpdateTask\x12\x1a.todo.v1.UpdateTaskRequest\x1a\x1b.todo.v1.UpdateTaskResponse\x12E\n" +
 	"\n" +
-	"DeleteTask\x12\x1a.todo.v1.DeleteTaskRequest\x1a\x1b.todo.v1.DeleteTaskResponseB\x8c\x01\n" +
-	"\vcom.todo.v1B\fServiceProtoP\x01Z2github.com/pyshx/todoapp/gen/todo/v1;todov1\xa2\x02\x03TXX\xaa\x02\aTodo.V1\xca\x02\aTodo\\V1\xe2\x02\x13Todo\\V1\\GPBMetadata\xea\x02\bTodo::V1b\x06proto3"
+	"DeleteTask\x12\x1a.todo.v1.DeleteTaskRequest\x1a\x1b.todo.v1.DeleteTaskResponseB\x8b\x01\n" +
+	"\vcom.todo.v1B\fServiceProtoP\x01Z1github.com/pyshx/todoapp/gen/todo/v1;todov1\xa2\x02\x03TXX\xaa\x02\aTodo.V1\xca\x02\aTodo\\V1\xe2\x02\x13Todo\\V1\\GPBMetadata\xea\x02\bTodo::V1b\x06proto3"
 
 var (
 	file_todo_v1_service_proto_rawDescOnce sync.Once
