@@ -107,9 +107,37 @@ func TestE2E_GetTask(t *testing.T) {
 		t.Skip("E2E tests disabled, set E2E_ENABLED=true to run")
 	}
 
-	// Use a seeded task ID
-	taskID := "dddddddd-dddd-dddd-dddd-dddddddddddd"
+	// First create a task
+	createBody := map[string]interface{}{
+		"title":       "Task to Get",
+		"description": "Will be retrieved",
+		"visibility":  "VISIBILITY_COMPANY_WIDE",
+	}
+	createBodyJSON, _ := json.Marshal(createBody)
 
+	createReq, _ := http.NewRequest("POST", baseURL+"/todo.v1.TodoService/CreateTask", bytes.NewReader(createBodyJSON))
+	createReq.Header.Set("Content-Type", "application/json")
+	createReq.Header.Set("x-user-id", testUserID)
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	createResp, err := client.Do(createReq)
+	if err != nil {
+		t.Fatalf("create request failed: %v", err)
+	}
+	defer createResp.Body.Close()
+
+	var createResult map[string]interface{}
+	if err := json.NewDecoder(createResp.Body).Decode(&createResult); err != nil {
+		t.Fatalf("failed to decode create response: %v", err)
+	}
+
+	task, ok := createResult["task"].(map[string]interface{})
+	if !ok {
+		t.Fatal("create response missing task field")
+	}
+	taskID := task["id"].(string)
+
+	// Now get the task
 	body := map[string]interface{}{
 		"id": taskID,
 	}
@@ -119,7 +147,6 @@ func TestE2E_GetTask(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-user-id", testUserID)
 
-	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
@@ -136,13 +163,17 @@ func TestE2E_GetTask(t *testing.T) {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	task, ok := result["task"].(map[string]interface{})
+	gotTask, ok := result["task"].(map[string]interface{})
 	if !ok {
 		t.Fatal("response missing task field")
 	}
 
-	if task["id"] != taskID {
-		t.Errorf("expected task id %s, got %v", taskID, task["id"])
+	if gotTask["id"] != taskID {
+		t.Errorf("expected task id %s, got %v", taskID, gotTask["id"])
+	}
+
+	if gotTask["title"] != "Task to Get" {
+		t.Errorf("expected title 'Task to Get', got %v", gotTask["title"])
 	}
 }
 
