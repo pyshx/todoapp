@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"runtime/debug"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -12,7 +13,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/pyshx/todoapp/pkg/apperr"
+	"github.com/pyshx/todoapp/pkg/auth"
 	"github.com/pyshx/todoapp/pkg/id"
+	"github.com/pyshx/todoapp/pkg/idempotency"
 	"github.com/pyshx/todoapp/pkg/user"
 )
 
@@ -36,19 +39,27 @@ var (
 )
 
 type AuthInterceptor struct {
-	userRepo user.Repo
-	logger   *slog.Logger
+	jwtService *auth.JWTService
+	userRepo   user.Repo
+	logger     *slog.Logger
 }
 
-func NewAuthInterceptor(userRepo user.Repo, logger *slog.Logger) *AuthInterceptor {
-	return &AuthInterceptor{userRepo: userRepo, logger: logger}
+func NewAuthInterceptor(jwtService *auth.JWTService, userRepo user.Repo, logger *slog.Logger) *AuthInterceptor {
+	return &AuthInterceptor{jwtService: jwtService, userRepo: userRepo, logger: logger}
 }
 
 func (i *AuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		// Try JWT authentication first
+		authHeader := req.Header().Get("Authorization")
+		if authHeader != "" {
+			return i.authenticateWithJWT(ctx, req, next, authHeader)
+		}
+
+		// Fall back to x-user-id header for backward compatibility
 		userIDStr := req.Header().Get("x-user-id")
 		if userIDStr == "" {
-			return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("x-user-id header is required"))
+			return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("authorization header or x-user-id header is required"))
 		}
 
 		userID, err := id.ParseUserID(userIDStr)
@@ -68,6 +79,38 @@ func (i *AuthInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
 		ctx = ContextWithUser(ctx, u)
 		return next(ctx, req)
 	}
+}
+
+func (i *AuthInterceptor) authenticateWithJWT(ctx context.Context, req connect.AnyRequest, next connect.UnaryFunc, authHeader string) (connect.AnyResponse, error) {
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || strings.ToLower(parts[0]) != "bearer" {
+		return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("invalid authorization header format"))
+	}
+
+	token := parts[1]
+	claims, err := i.jwtService.ValidateToken(token)
+	if err != nil {
+		switch err {
+		case auth.ErrTokenExpired:
+			return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("token expired"))
+		case auth.ErrInvalidSignature:
+			return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("invalid token signature"))
+		default:
+			return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("invalid token"))
+		}
+	}
+
+	u, err := i.userRepo.FindByID(ctx, claims.UserID)
+	if err != nil {
+		if apperr.IsNotFound(err) {
+			return nil, connect.NewError(connect.CodeUnauthenticated, apperr.NewErrUnauthenticated("user not found"))
+		}
+		i.logger.Error("failed to find user", "error", err, "user_id", claims.UserID.String())
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+
+	ctx = ContextWithUser(ctx, u)
+	return next(ctx, req)
 }
 
 func (i *AuthInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
@@ -234,5 +277,77 @@ func (i *MetricsInterceptor) WrapStreamingClient(next connect.StreamingClientFun
 }
 
 func (i *MetricsInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
+	return next
+}
+
+// IdempotencyInterceptor handles idempotent requests for mutation operations
+type IdempotencyInterceptor struct {
+	store  idempotency.Store
+	logger *slog.Logger
+}
+
+func NewIdempotencyInterceptor(store idempotency.Store, logger *slog.Logger) *IdempotencyInterceptor {
+	return &IdempotencyInterceptor{store: store, logger: logger}
+}
+
+func (i *IdempotencyInterceptor) WrapUnary(next connect.UnaryFunc) connect.UnaryFunc {
+	return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
+		idempotencyKey := req.Header().Get("Idempotency-Key")
+		if idempotencyKey == "" {
+			return next(ctx, req)
+		}
+
+		method := req.Spec().Procedure
+		if !i.isMutationMethod(method) {
+			return next(ctx, req)
+		}
+
+		u, ok := UserFromContext(ctx)
+		if !ok {
+			return next(ctx, req)
+		}
+
+		cacheKey := idempotency.GenerateKey(u.ID().String(), method, []byte(idempotencyKey))
+
+		if _, ok := i.store.Get(ctx, cacheKey); ok {
+			i.logger.Info("returning cached idempotent response",
+				"method", method,
+				"idempotency_key", idempotencyKey,
+			)
+			return nil, connect.NewError(connect.CodeAlreadyExists, apperr.NewErrAlreadyExists("request", "already processed with this idempotency key"))
+		}
+
+		resp, err := next(ctx, req)
+
+		if err == nil {
+			i.store.Set(ctx, cacheKey, &idempotency.Response{
+				StatusCode: 200,
+				Body:       []byte(idempotencyKey),
+			})
+		}
+
+		return resp, err
+	}
+}
+
+func (i *IdempotencyInterceptor) isMutationMethod(method string) bool {
+	mutationMethods := []string{
+		"/todo.v1.TodoService/CreateTask",
+		"/todo.v1.TodoService/UpdateTask",
+		"/todo.v1.TodoService/DeleteTask",
+	}
+	for _, m := range mutationMethods {
+		if method == m {
+			return true
+		}
+	}
+	return false
+}
+
+func (i *IdempotencyInterceptor) WrapStreamingClient(next connect.StreamingClientFunc) connect.StreamingClientFunc {
+	return next
+}
+
+func (i *IdempotencyInterceptor) WrapStreamingHandler(next connect.StreamingHandlerFunc) connect.StreamingHandlerFunc {
 	return next
 }
