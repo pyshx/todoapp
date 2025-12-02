@@ -31,7 +31,7 @@ func main() {
 	)
 
 	ctx := context.Background()
-	container, err := di.New(ctx, cfg.DatabaseURL, cfg.GRPCPort, logger)
+	container, err := di.New(ctx, cfg.DatabaseURL, cfg.GRPCPort, cfg.JWTSecret, cfg.JWTDuration, logger)
 	if err != nil {
 		logger.Error("failed to initialize dependencies", "error", err)
 		os.Exit(1)
