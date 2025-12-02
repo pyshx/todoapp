@@ -15,6 +15,8 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/pyshx/todoapp/gen/todo/v1/todov1connect"
+	"github.com/pyshx/todoapp/pkg/auth"
+	"github.com/pyshx/todoapp/pkg/idempotency"
 	"github.com/pyshx/todoapp/pkg/user"
 )
 
@@ -23,13 +25,14 @@ type Server struct {
 	logger     *slog.Logger
 }
 
-func NewServer(port int, handler *TaskHandler, userRepo user.Repo, logger *slog.Logger) *Server {
+func NewServer(port int, handler *TaskHandler, userRepo user.Repo, jwtService *auth.JWTService, idempotencyStore idempotency.Store, logger *slog.Logger) *Server {
 	interceptors := connect.WithInterceptors(
 		NewRecoveryInterceptor(logger),
 		NewMetricsInterceptor(),
 		NewRequestIDInterceptor(),
 		NewLoggingInterceptor(logger),
-		NewAuthInterceptor(userRepo, logger),
+		NewAuthInterceptor(jwtService, userRepo, logger),
+		NewIdempotencyInterceptor(idempotencyStore, logger),
 	)
 
 	mux := http.NewServeMux()
